@@ -71,109 +71,112 @@ function App() {
 
     const enabledModels = models.filter(m => m.enabled)
 
-    for (const model of enabledModels) {
-      try {
-        setResults(prev => [...prev, {
-          provider: model.name,
-          first_token_time: 'N/A',
-          reasoning_speed: '0',
-          content_speed: '0',
-          total_speed: '0',
-          total_time: '0',
-        }])
-
-        const client = new OpenAI({
-          apiKey: model.apiKey,
-          baseURL: model.baseUrl,
-          dangerouslyAllowBrowser: true,
-        })
-
-        const startTime = Date.now()
-        let firstTokenTime = null
-        let reasoningTokenCount = 0
-        let contentTokenCount = 0
-        let reasoningStartTime = null
-        let reasoningEndTime = null
-        let contentStartTime = null
-        let contentEndTime = null
-        let reasoningContent = ''
-        let normalContent = ''
-
-        const stream = await client.chat.completions.create({
-          model: model.model,
-          messages: [{ role: 'user', content: testMessage }],
-          stream: true,
-        })
-
-        for await (const chunk of stream) {
-          if (chunk.choices?.[0]?.delta) {
-            const delta = chunk.choices[0].delta
-
-            if (firstTokenTime === null && (delta.reasoning_content || delta.content)) {
-              firstTokenTime = (Date.now() - startTime) / 1000
-            }
-
-            const getTokenCount = (text) => {
-              return tokenCountMethod === 'char' ? text.length : 1
-            }
-
-            if (delta.reasoning_content) {
-              reasoningTokenCount += getTokenCount(delta.reasoning_content)
-              if (!reasoningStartTime) reasoningStartTime = Date.now()
-              reasoningEndTime = Date.now()
-              reasoningContent += delta.reasoning_content
-            } else if (delta.content) {
-              contentTokenCount += getTokenCount(delta.content)
-              if (!contentStartTime) contentStartTime = Date.now()
-              contentEndTime = Date.now()
-              normalContent += delta.content
-            }
-
-            const totalTime = (Date.now() - startTime) / 1000
-            const reasoningTime = reasoningStartTime ?
-              (reasoningEndTime - reasoningStartTime) / 1000 : 0
-            const contentTime = contentStartTime ?
-              (contentEndTime - contentStartTime) / 1000 : 0
-
-            setResults(prev => prev.map(r =>
-              r.provider === model.name ? {
-                provider: model.name,
-                first_token_time: firstTokenTime?.toFixed(2) || 'N/A',
-                reasoning_speed: reasoningTime > 0 ?
-                  (reasoningTokenCount / reasoningTime).toFixed(2) : '0',
-                content_speed: contentTime > 0 ?
-                  (contentTokenCount / contentTime).toFixed(2) : '0',
-                total_speed: totalTime > 0 ?
-                  ((reasoningTokenCount + contentTokenCount) / totalTime).toFixed(2) : '0',
-                total_time: totalTime.toFixed(2),
-              } : r
-            ))
-
-            setResponses(prev => ({
-              ...prev,
-              [model.name]: {
-                reasoning: reasoningContent,
-                content: normalContent,
-              }
-            }))
-          }
-        }
-
-      } catch (error) {
-        console.error(`Error testing ${model.name}:`, error)
-        setResults(prev => prev.map(r =>
-          r.provider === model.name ? {
+    try {
+      await Promise.all(enabledModels.map(async (model) => {
+        try {
+          setResults(prev => [...prev, {
             provider: model.name,
-            first_token_time: 'Error',
-            reasoning_speed: 'Error',
-            content_speed: 'Error',
-            total_speed: 'Error',
-            total_time: 'Error',
-          } : r
-        ))
-      }
+            first_token_time: 'N/A',
+            reasoning_speed: '0',
+            content_speed: '0',
+            total_speed: '0',
+            total_time: '0',
+          }])
+
+          const client = new OpenAI({
+            apiKey: model.apiKey,
+            baseURL: model.baseUrl,
+            dangerouslyAllowBrowser: true,
+          })
+
+          const startTime = Date.now()
+          let firstTokenTime = null
+          let reasoningTokenCount = 0
+          let contentTokenCount = 0
+          let reasoningStartTime = null
+          let reasoningEndTime = null
+          let contentStartTime = null
+          let contentEndTime = null
+          let reasoningContent = ''
+          let normalContent = ''
+
+          const stream = await client.chat.completions.create({
+            model: model.model,
+            messages: [{ role: 'user', content: testMessage }],
+            stream: true,
+          })
+
+          for await (const chunk of stream) {
+            if (chunk.choices?.[0]?.delta) {
+              const delta = chunk.choices[0].delta
+
+              if (firstTokenTime === null && (delta.reasoning_content || delta.content)) {
+                firstTokenTime = (Date.now() - startTime) / 1000
+              }
+
+              const getTokenCount = (text) => {
+                return tokenCountMethod === 'char' ? text.length : 1
+              }
+
+              if (delta.reasoning_content) {
+                reasoningTokenCount += getTokenCount(delta.reasoning_content)
+                if (!reasoningStartTime) reasoningStartTime = Date.now()
+                reasoningEndTime = Date.now()
+                reasoningContent += delta.reasoning_content
+              } else if (delta.content) {
+                contentTokenCount += getTokenCount(delta.content)
+                if (!contentStartTime) contentStartTime = Date.now()
+                contentEndTime = Date.now()
+                normalContent += delta.content
+              }
+
+              const totalTime = (Date.now() - startTime) / 1000
+              const reasoningTime = reasoningStartTime ?
+                (reasoningEndTime - reasoningStartTime) / 1000 : 0
+              const contentTime = contentStartTime ?
+                (contentEndTime - contentStartTime) / 1000 : 0
+
+              setResults(prev => prev.map(r =>
+                r.provider === model.name ? {
+                  provider: model.name,
+                  first_token_time: firstTokenTime?.toFixed(2) || 'N/A',
+                  reasoning_speed: reasoningTime > 0 ?
+                    (reasoningTokenCount / reasoningTime).toFixed(2) : '0',
+                  content_speed: contentTime > 0 ?
+                    (contentTokenCount / contentTime).toFixed(2) : '0',
+                  total_speed: totalTime > 0 ?
+                    ((reasoningTokenCount + contentTokenCount) / totalTime).toFixed(2) : '0',
+                  total_time: totalTime.toFixed(2),
+                } : r
+              ))
+
+              setResponses(prev => ({
+                ...prev,
+                [model.name]: {
+                  reasoning: reasoningContent,
+                  content: normalContent,
+                }
+              }))
+            }
+          }
+
+        } catch (error) {
+          console.error(`Error testing ${model.name}:`, error)
+          setResults(prev => prev.map(r =>
+            r.provider === model.name ? {
+              provider: model.name,
+              first_token_time: 'Error',
+              reasoning_speed: 'Error',
+              content_speed: 'Error',
+              total_speed: 'Error',
+              total_time: 'Error',
+            } : r
+          ))
+        }
+      }))
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   const saveConfigurations = () => {
@@ -283,56 +286,54 @@ function App() {
                 value={model.model}
                 onChange={e => updateModel(model.id, 'model', e.target.value)}
               />
-              {responses[model.name] && (
-                <>
+              <>
+                <div style={{ marginTop: 16 }}>
+                  <div>
+                    <strong>推理过程：</strong>
+                    <div style={{ whiteSpace: 'pre-wrap', marginTop: 8, minHeight: 200, maxHeight: 200, overflow: 'auto' }}
+                      ref={el => {
+                        if (el) {
+                          el.scrollTop = el.scrollHeight
+                        }
+                      }}
+                    >
+                      {responses[model.name]?.reasoning || ''}
+                    </div>
+                  </div>
                   <div style={{ marginTop: 16 }}>
-                    <div>
-                      <strong>推理过程：</strong>
-                      <div style={{ whiteSpace: 'pre-wrap', marginTop: 8, maxHeight: 200, overflow: 'auto' }}
-                        ref={el => {
-                          if (el) {
-                            el.scrollTop = el.scrollHeight
-                          }
-                        }}
-                      >
-                        {responses[model.name].reasoning || ''}
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 16 }}>
-                      <strong>生成内容：</strong>
-                      <div style={{ marginTop: 8, maxHeight: 200, overflow: 'auto' }}
-                        ref={el => {
-                          if (el) {
-                            el.scrollTop = el.scrollHeight
-                          }
-                        }}
-                      >
-                        {responses[model.name].content || ''}
-                      </div>
+                    <strong>生成内容：</strong>
+                    <div style={{ marginTop: 8, minHeight: 200, maxHeight: 200, overflow: 'auto' }}
+                      ref={el => {
+                        if (el) {
+                          el.scrollTop = el.scrollHeight
+                        }
+                      }}
+                    >
+                      {responses[model.name]?.content || ''}
                     </div>
                   </div>
-                  <div style={{ marginTop: 16, background: '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
-                    {(() => {
-                      const result = results.find(r => r.provider === model.name) || {
-                        first_token_time: 'N/A',
-                        reasoning_speed: '0',
-                        content_speed: '0',
-                        total_speed: '0',
-                        total_time: '0'
-                      };
-                      return (
-                        <>
-                          <div>首token时间：{result.first_token_time} 秒</div>
-                          <div>推理token/s：{result.reasoning_speed}</div>
-                          <div>内容token/s：{result.content_speed}</div>
-                          <div>总token/s：{result.total_speed}</div>
-                          <div>总时间：{result.total_time} 秒</div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </>
-              )}
+                </div>
+                <div style={{ marginTop: 16, background: '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
+                  {(() => {
+                    const result = results.find(r => r.provider === model.name) || {
+                      first_token_time: 'N/A',
+                      reasoning_speed: '0',
+                      content_speed: '0',
+                      total_speed: '0',
+                      total_time: '0'
+                    };
+                    return (
+                      <>
+                        <div>首token时间：{result.first_token_time} 秒</div>
+                        <div>推理token/s：{result.reasoning_speed}</div>
+                        <div>内容token/s：{result.content_speed}</div>
+                        <div>总token/s：{result.total_speed}</div>
+                        <div>总时间：{result.total_time} 秒</div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </>
             </Space>
           </Card>
         ))}
