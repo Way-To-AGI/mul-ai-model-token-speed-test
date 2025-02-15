@@ -26,7 +26,7 @@ function App() {
       enabled: true,
     }
   ])
-  
+
   const [testMessage, setTestMessage] = useState("你好！很高兴见到你啊，有什么我可以帮助你的吗？")
   const [results, setResults] = useState([])
   const [isLoading, setIsLoading] = useState(false)
@@ -65,9 +65,9 @@ function App() {
     setIsLoading(true)
     setResults([])
     setResponses({})
-    
+
     const enabledModels = models.filter(m => m.enabled)
-    
+
     for (const model of enabledModels) {
       try {
         setResults(prev => [...prev, {
@@ -273,20 +273,54 @@ function App() {
                 onChange={e => updateModel(model.id, 'model', e.target.value)}
               />
               {responses[model.name] && (
-                <div style={{ marginTop: 16 }}>
-                  <div>
-                    <strong>推理过程：</strong>
-                    <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8 }}>
-                      {responses[model.name].reasoning || ''}
-                    </pre>
-                  </div>
+                <>
                   <div style={{ marginTop: 16 }}>
-                    <strong>生成内容：</strong>
-                    <div style={{ marginTop: 8 }}>
-                      {responses[model.name].content || ''}
+                    <div>
+                      <strong>推理过程：</strong>
+                      <div style={{ whiteSpace: 'pre-wrap', marginTop: 8, maxHeight: 200, overflow: 'auto' }}
+                        ref={el => {
+                          if (el) {
+                            el.scrollTop = el.scrollHeight
+                          }
+                        }}
+                      >
+                        {responses[model.name].reasoning || ''}
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 16 }}>
+                      <strong>生成内容：</strong>
+                      <div style={{ marginTop: 8, maxHeight: 200, overflow: 'auto' }}
+                        ref={el => {
+                          if (el) {
+                            el.scrollTop = el.scrollHeight
+                          }
+                        }}
+                      >
+                        {responses[model.name].content || ''}
+                      </div>
                     </div>
                   </div>
-                </div>
+                  <div style={{ marginTop: 16, background: '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
+                    {(() => {
+                      const result = results.find(r => r.provider === model.name) || {
+                        first_token_time: 'N/A',
+                        reasoning_speed: '0',
+                        content_speed: '0',
+                        total_speed: '0',
+                        total_time: '0'
+                      };
+                      return (
+                        <>
+                          <div>首token时间：{result.first_token_time} 秒</div>
+                          <div>推理token/s：{result.reasoning_speed}</div>
+                          <div>内容token/s：{result.content_speed}</div>
+                          <div>总token/s：{result.total_speed}</div>
+                          <div>总时间：{result.total_time} 秒</div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
               )}
             </Space>
           </Card>
