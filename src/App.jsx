@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Space, Typography, Card, Input, Switch, Table, Select, Tooltip } from 'antd'
+import { Button, Space, Typography, Card, Input, Switch, Table, Select, Tooltip, message } from 'antd'
 import { PlusOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import './App.css'
 import { OpenAI } from 'openai'
@@ -8,24 +8,27 @@ const { TextArea } = Input
 const { Title } = Typography
 
 function App() {
-  const [models, setModels] = useState([
-    {
-      id: 1,
-      name: "阿里云-百炼",
-      apiKey: "",
-      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      model: "deepseek-r1",
-      enabled: true,
-    },
-    {
-      id: 2,
-      name: "硅基流动",
-      apiKey: "",
-      baseUrl: "https://api.siliconflow.cn/v1",
-      model: "deepseek-ai/DeepSeek-R1",
-      enabled: true,
-    }
-  ])
+  const [models, setModels] = useState(() => {
+    const savedModels = localStorage.getItem('deepseek-models')
+    return savedModels ? JSON.parse(savedModels) : [
+      {
+        id: 1,
+        name: "阿里云-百炼",
+        apiKey: "",
+        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model: "deepseek-r1",
+        enabled: true,
+      },
+      {
+        id: 2,
+        name: "硅基流动",
+        apiKey: "",
+        baseUrl: "https://api.siliconflow.cn/v1",
+        model: "deepseek-ai/DeepSeek-R1",
+        enabled: true,
+      }
+    ]
+  })
 
   const [testMessage, setTestMessage] = useState("你好！很高兴见到你啊，有什么我可以帮助你的吗？")
   const [results, setResults] = useState([])
@@ -173,6 +176,11 @@ function App() {
     setIsLoading(false)
   }
 
+  const saveConfigurations = () => {
+    localStorage.setItem('deepseek-models', JSON.stringify(models))
+    message.success('配置已保存')
+  }
+
   const columns = [
     { title: '服务商', dataIndex: 'provider', key: 'provider' },
     { title: '首token时间(秒)', dataIndex: 'first_token_time', key: 'first_token_time' },
@@ -216,6 +224,9 @@ function App() {
             icon={<PlusOutlined />}
           >
             添加模型
+          </Button>
+          <Button onClick={saveConfigurations}>
+            保存配置
           </Button>
           <Button type="primary" onClick={handleTest} loading={isLoading}>
             开始测试
