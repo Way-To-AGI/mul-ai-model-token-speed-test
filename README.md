@@ -29,7 +29,7 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/yourusername/mul-ai-model-token-speed-test.git
+git clone https://github.com/Way-To-AGI/mul-ai-model-token-speed-test.git
 
 # 进入项目目录
 cd mul-ai-model-token-speed-test
@@ -103,7 +103,7 @@ npm run build
 
 如有任何问题或建议，欢迎提交 Issue 或通过以下方式联系我们：
 
-- 项目 Issue: [GitHub Issues](https://github.com/yourusername/mul-ai-model-token-speed-test/issues)
+- 项目 Issue: [GitHub Issues](https://github.com/Way-To-AGI/mul-ai-model-token-speed-test/issues)
 
 ## 致谢
 
