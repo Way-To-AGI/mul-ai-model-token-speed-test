@@ -9,7 +9,15 @@
 
 这是一个用于测试和比较不同 AI 模型 API 性能的工具。它可以同时测试多个 AI 模型的响应速度、token 生成速度等关键指标，帮助开发者选择最适合其应用场景的 AI 服务提供商。
 
+## 项目体验地址
+https://mul-ai-model-token-speed-test.vercel.app/
+
 ### 主要功能
+
+
+
+https://github.com/user-attachments/assets/cc6bb812-a906-423f-877e-8f4973a4ff15
+
 
 - 🚀 支持多个 AI 模型同时测试
 - 📊 实时显示性能指标
