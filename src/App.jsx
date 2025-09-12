@@ -196,7 +196,7 @@ function App() {
   return (
     <div className="container">
       <Title level={2} style={{ marginBottom: 16, textAlign: 'center' }}>
-        DeepSeek API 性能评测
+        大模型 API 性能评测
       </Title>
       <Typography.Paragraph style={{ textAlign: 'center', marginBottom: 24, color: '#666' }}>
         对接多个服务商，一键对比推理与生成速度。
