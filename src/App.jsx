@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button, Space, Typography, Card, Input, Switch, Table, Select, Tooltip, message } from 'antd'
+import { Button, Space, Typography, Card, Input, Switch, Table, Select, Tooltip, message, Divider, Tag } from 'antd'
 import { PlusOutlined, DeleteOutlined, QuestionCircleOutlined } from '@ant-design/icons'
 import './App.css'
 import { OpenAI } from 'openai'
@@ -30,7 +30,7 @@ function App() {
     ]
   })
 
-  const [testMessage, setTestMessage] = useState("你好！很高兴见到你啊，有什么我可以帮助你的吗？")
+  const [testMessage, setTestMessage] = useState("你好！很高兴见到你，有什么我可以帮助你的吗？")
   const [results, setResults] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [responses, setResponses] = useState({})
@@ -195,19 +195,23 @@ function App() {
 
   return (
     <div className="container">
-      <Title level={2} style={{ marginBottom: 32, textAlign: 'center' }}>
+      <Title level={2} style={{ marginBottom: 16, textAlign: 'center' }}>
         DeepSeek API 性能评测
       </Title>
+      <Typography.Paragraph style={{ textAlign: 'center', marginBottom: 24, color: '#666' }}>
+        对接多个服务商，一键对比推理与生成速度。
+      </Typography.Paragraph>
 
       <Card className="message-card" bordered={false}>
         <TextArea
           value={testMessage}
           onChange={(e) => setTestMessage(e.target.value)}
           placeholder="请输入测试内容..."
-          rows={4}
+          allowClear
+          autoSize={{ minRows: 3, maxRows: 6 }}
           style={{ marginBottom: 16 }}
         />
-        <Space style={{ float: 'right' }}>
+        <Space style={{ float: 'right' }} size={12}>
           <Space>
             <Select
               value={tokenCountMethod}
@@ -239,7 +243,7 @@ function App() {
 
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
         gap: '16px',
         marginBottom: '24px',
       }}>
@@ -255,8 +259,11 @@ function App() {
                 <Input
                   value={model.name}
                   onChange={e => updateModel(model.id, 'name', e.target.value)}
-                  style={{ width: '120px' }}
+                  style={{ width: '160px' }}
+                  placeholder="名称"
+                  allowClear
                 />
+                {model.enabled ? <Tag color="green">启用</Tag> : <Tag>禁用</Tag>}
               </Space>
             }
             extra={
@@ -270,50 +277,50 @@ function App() {
             style={{ opacity: model.enabled ? 1 : 0.5 }}
           >
             <Space direction="vertical" style={{ width: '100%' }}>
-              <Input
+              <Input.Password
                 placeholder="API Key"
                 value={model.apiKey}
                 onChange={e => updateModel(model.id, 'apiKey', e.target.value)}
-                type="password"
+                allowClear
               />
               <Input
                 placeholder="Base URL"
                 value={model.baseUrl}
                 onChange={e => updateModel(model.id, 'baseUrl', e.target.value)}
+                allowClear
               />
               <Input
                 placeholder="Model"
                 value={model.model}
                 onChange={e => updateModel(model.id, 'model', e.target.value)}
+                allowClear
               />
               <>
-                <div style={{ marginTop: 16 }}>
-                  <div>
-                    <strong>推理过程：</strong>
-                    <div style={{ whiteSpace: 'pre-wrap', marginTop: 8, minHeight: 200, maxHeight: 200, overflow: 'auto' }}
-                      ref={el => {
-                        if (el) {
-                          el.scrollTop = el.scrollHeight
-                        }
-                      }}
-                    >
-                      {responses[model.name]?.reasoning || ''}
-                    </div>
-                  </div>
-                  <div style={{ marginTop: 16 }}>
-                    <strong>生成内容：</strong>
-                    <div style={{ marginTop: 8, minHeight: 200, maxHeight: 200, overflow: 'auto' }}
-                      ref={el => {
-                        if (el) {
-                          el.scrollTop = el.scrollHeight
-                        }
-                      }}
-                    >
-                      {responses[model.name]?.content || ''}
-                    </div>
+                <div className="response-block">
+                  <div className="response-title">推理过程：</div>
+                  <div className="response-content" style={{ whiteSpace: 'pre-wrap' }}
+                    ref={el => {
+                      if (el) {
+                        el.scrollTop = el.scrollHeight
+                      }
+                    }}
+                  >
+                    {responses[model.name]?.reasoning || ''}
                   </div>
                 </div>
-                <div style={{ marginTop: 16, background: '#f5f5f5', padding: '12px', borderRadius: '4px' }}>
+                <div className="response-block">
+                  <div className="response-title">生成内容：</div>
+                  <div className="response-content"
+                    ref={el => {
+                      if (el) {
+                        el.scrollTop = el.scrollHeight
+                      }
+                    }}
+                  >
+                    {responses[model.name]?.content || ''}
+                  </div>
+                </div>
+                <div className="stats-box">
                   {(() => {
                     const result = results.find(r => r.provider === model.name) || {
                       first_token_time: 'N/A',

@@ -1,7 +1,7 @@
 #root {
   margin: 0 auto;
-  padding: 2rem;
-  width: 1680px;
+  padding: 0;
+  width: 100%;
 }
 
 .logo {
@@ -38,6 +38,43 @@
 
 .read-the-docs {
   color: #888;
+}
+
+.container {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.message-card {
+  margin-bottom: 16px;
+}
+
+.stats-box {
+  margin-top: 16px;
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.response-block {
+  margin-top: 16px;
+}
+
+.response-title {
+  font-weight: 600;
+}
+
+.response-content {
+  margin-top: 8px;
+  min-height: 200px;
+  max-height: 200px;
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  padding: 12px;
 }
 
 /* 自定义滚动条样式 */
