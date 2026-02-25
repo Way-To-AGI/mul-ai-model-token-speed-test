@@ -1,0 +1,117 @@
+// input: none
+// output: PROVIDER_PRESETS, PROMPT_TEMPLATES — preset data for quick-add and prompt shortcuts
+// pos: static data module consumed by App.jsx
+
+export const PROVIDER_PRESETS = [
+  {
+    key: 'openai',
+    label: 'OpenAI',
+    icon: '🟢',
+    color: '#10a37f',
+    baseUrl: 'https://api.openai.com/v1',
+    models: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o1-mini', 'o3-mini'],
+  },
+  {
+    key: 'deepseek',
+    label: 'DeepSeek',
+    icon: '🐋',
+    color: '#4d6bfe',
+    baseUrl: 'https://api.deepseek.com',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+  },
+  {
+    key: 'openrouter',
+    label: 'OpenRouter',
+    icon: '🔀',
+    color: '#7c3aed',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    models: [
+      'anthropic/claude-sonnet-4',
+      'anthropic/claude-3.5-haiku',
+      'openai/gpt-4o',
+      'google/gemini-2.0-flash-exp',
+      'deepseek/deepseek-r1',
+      'meta-llama/llama-3.3-70b-instruct',
+    ],
+  },
+  {
+    key: 'google',
+    label: 'Google Gemini',
+    icon: '💎',
+    color: '#4285f4',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro'],
+  },
+  {
+    key: 'aliyun',
+    label: '阿里云百炼',
+    icon: '☁️',
+    color: '#ff6a00',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['deepseek-r1', 'deepseek-v3', 'qwen-max', 'qwen-plus', 'qwen-turbo'],
+  },
+  {
+    key: 'siliconflow',
+    label: '硅基流动',
+    icon: '🌊',
+    color: '#06b6d4',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    models: ['deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-V3', 'Qwen/Qwen2.5-72B-Instruct'],
+  },
+  {
+    key: 'groq',
+    label: 'Groq',
+    icon: '⚡',
+    color: '#f55036',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    models: ['llama-3.3-70b-versatile', 'mixtral-8x7b-32768', 'gemma2-9b-it'],
+  },
+  {
+    key: 'together',
+    label: 'Together AI',
+    icon: '🤝',
+    color: '#14b8a6',
+    baseUrl: 'https://api.together.xyz/v1',
+    models: ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'deepseek-ai/DeepSeek-R1'],
+  },
+  {
+    key: 'mistral',
+    label: 'Mistral',
+    icon: '🌬️',
+    color: '#f97316',
+    baseUrl: 'https://api.mistral.ai/v1',
+    models: ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest'],
+  },
+  {
+    key: 'xai',
+    label: 'xAI (Grok)',
+    icon: '𝕏',
+    color: '#000000',
+    baseUrl: 'https://api.x.ai/v1',
+    models: ['grok-2', 'grok-2-mini'],
+  },
+  {
+    key: 'moonshot',
+    label: '月之暗面',
+    icon: '🌙',
+    color: '#1a1a2e',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
+  },
+  {
+    key: 'zhipu',
+    label: '智谱AI',
+    icon: '🧠',
+    color: '#3b5998',
+    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    models: ['glm-4-plus', 'glm-4-flash', 'glm-4-long'],
+  },
+]
+
+export const PROMPT_TEMPLATES = [
+  { label: '简单对话', value: '你好！很高兴见到你，有什么我可以帮助你的吗？' },
+  { label: '代码编写', value: '请用 Python 实现一个快速排序算法，并解释其时间复杂度。' },
+  { label: '数学推理', value: '一个水池有两个进水管和一个排水管。甲管注满需6小时，乙管需8小时，排水管排空需12小时。三管同时打开，多久注满？请给出详细推理过程。' },
+  { label: '翻译任务', value: '请将以下中文翻译成英文、日文和法文：\n"科技改变生活，创新引领未来。在这个快速变化的时代，我们需要不断学习和适应。"' },
+  { label: '创意写作', value: '请写一首关于人工智能与人类共同进步的现代诗，要求意境优美、富有哲理。' },
+]

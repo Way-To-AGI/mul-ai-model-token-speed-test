@@ -10,7 +10,14 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <ConfigProvider
       locale={zhCN}
-      theme={{ algorithm: theme.defaultAlgorithm, token: { borderRadius: 8 } }}
+      theme={{
+        algorithm: theme.defaultAlgorithm,
+        token: {
+          borderRadius: 8,
+          colorPrimary: '#4f46e5',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+        },
+      }}
     >
       <App />
     </ConfigProvider>
