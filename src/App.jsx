@@ -18,7 +18,7 @@ import { OpenAI } from 'openai'
 import { PROVIDER_PRESETS, PROMPT_TEMPLATES } from './presets'
 
 const { TextArea } = Input
-const { Title, Text, Paragraph } = Typography
+const { Title, Text } = Typography
 
 const STORAGE_KEY = 'ai-speed-test-models'
 const LEGACY_KEY = 'deepseek-models'
@@ -230,11 +230,13 @@ function App() {
       {/* ===== Header ===== */}
       <header className="app-header">
         <div className="header-inner">
-          <div className="header-title-row">
+          <div className="header-left">
             <RocketOutlined className="header-icon" />
-            <Title level={3} className="header-title">大模型 API 性能评测</Title>
+            <div className="header-text">
+              <Title level={4} className="header-title">大模型 API 性能评测</Title>
+              <Text className="header-sub">多服务商并行测试 · 实时对比推理与生成速度</Text>
+            </div>
           </div>
-          <Paragraph className="header-sub">多服务商并行测试 · 实时对比推理与生成速度</Paragraph>
           <Segmented
             className="mode-switch"
             value={viewMode}
