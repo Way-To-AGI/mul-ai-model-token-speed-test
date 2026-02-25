@@ -1,18 +1,19 @@
 // input: presets.js (provider/prompt data), openai SDK, antd components
-// output: main App component — AI model speed test dashboard
+// output: main App component — AI model speed test dashboard with auto light/dark theme
 // pos: root UI component rendered by main.jsx
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Button, Typography, Card, Input, Switch, Table, Select,
   Tooltip, message, Tag, Segmented, Dropdown, Collapse, Empty,
-  Space, Drawer,
+  Space, Drawer, ConfigProvider, theme as antTheme,
 } from 'antd'
 import {
   PlusOutlined, DeleteOutlined, QuestionCircleOutlined,
   ThunderboltOutlined, SaveOutlined, SettingOutlined,
   EyeOutlined, DashboardOutlined, RocketOutlined,
 } from '@ant-design/icons'
+import zhCN from 'antd/locale/zh_CN'
 import './App.css'
 import { OpenAI } from 'openai'
 import { PROVIDER_PRESETS, PROMPT_TEMPLATES } from './presets'
@@ -23,21 +24,50 @@ const { Title, Text } = Typography
 const STORAGE_KEY = 'ai-speed-test-models'
 const LEGACY_KEY = 'deepseek-models'
 const MODE_KEY = 'ai-speed-test-view-mode'
+const THEME_KEY = 'ai-speed-test-theme'
 
 function getProviderColor(baseUrl) {
-  if (!baseUrl) return '#1677ff'
+  if (!baseUrl) return '#10b981'
   try {
     const host = new URL(baseUrl).hostname
     const preset = PROVIDER_PRESETS.find(p => {
       try { return host === new URL(p.baseUrl).hostname } catch { return false }
     })
-    return preset?.color || '#1677ff'
+    return preset?.color || '#10b981'
   } catch {
-    return '#1677ff'
+    return '#10b981'
   }
 }
 
+function useTheme() {
+  const [themeMode, setThemeMode] = useState(() => localStorage.getItem(THEME_KEY) || 'auto')
+  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e) => setSystemDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const isDark = themeMode === 'auto' ? systemDark : themeMode === 'dark'
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
+  }, [isDark])
+
+  const cycleTheme = () => {
+    const next = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto'
+    setThemeMode(next)
+    localStorage.setItem(THEME_KEY, next)
+  }
+
+  return { themeMode, isDark, cycleTheme }
+}
+
 function App() {
+  const { themeMode, isDark, cycleTheme } = useTheme()
+
   const [models, setModels] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY)
     return saved ? JSON.parse(saved) : [
@@ -205,15 +235,11 @@ function App() {
     }
   }
 
-  const renderModelConfig = (model, compact = false) => (
-    <div key={model.id} className={compact ? 'compact-model-item' : 'drawer-model-item'} style={{ borderLeftColor: getProviderColor(model.baseUrl) }}>
+  const renderModelConfig = (model) => (
+    <div key={model.id} className="drawer-model-item" style={{ borderLeftColor: getProviderColor(model.baseUrl) }}>
       <div className="model-item-header">
         <Switch size="small" checked={model.enabled} onChange={c => toggleModel(model.id, c)} />
-        <Input
-          size="small" variant="borderless"
-          value={model.name} onChange={e => updateModel(model.id, 'name', e.target.value)}
-          className="model-name-input" placeholder="名称"
-        />
+        <Input size="small" variant="borderless" value={model.name} onChange={e => updateModel(model.id, 'name', e.target.value)} className="model-name-input" placeholder="名称" />
         {model.enabled ? <Tag color="green" bordered={false}>ON</Tag> : <Tag bordered={false}>OFF</Tag>}
         <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeModel(model.id)} />
       </div>
@@ -225,120 +251,131 @@ function App() {
     </div>
   )
 
+  const themeLabel = themeMode === 'auto' ? '跟随系统' : themeMode === 'light' ? '浅色模式' : '深色模式'
+  const themeIcon = themeMode === 'auto' ? '🖥️' : isDark ? '🌙' : '☀️'
+
+  const antThemeConfig = {
+    algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
+    token: {
+      borderRadius: 10,
+      colorPrimary: isDark ? '#10b981' : '#059669',
+      fontFamily: '"DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif',
+      ...(isDark ? {
+        colorBgBase: '#09090b',
+        colorBgContainer: '#18181b',
+        colorBgElevated: '#1f1f23',
+        colorBorder: 'rgba(255,255,255,0.08)',
+        colorBorderSecondary: 'rgba(255,255,255,0.06)',
+      } : {}),
+    },
+    components: isDark ? {
+      Card: { colorBgContainer: '#18181b' },
+      Table: { colorBgContainer: 'transparent', headerBg: 'rgba(255,255,255,0.03)' },
+      Input: { colorBgContainer: '#111113' },
+      Select: { colorBgContainer: '#111113' },
+      Drawer: { colorBgElevated: '#18181b' },
+    } : {
+      Table: { headerBg: 'rgba(0,0,0,0.02)' },
+    },
+  }
+
   return (
-    <div className="app-wrapper">
-      {/* ===== Header ===== */}
-      <header className="app-header">
-        <div className="header-inner">
-          <div className="header-left">
-            <RocketOutlined className="header-icon" />
-            <div className="header-text">
-              <Title level={4} className="header-title">大模型 API 性能评测</Title>
-              <Text className="header-sub">多服务商并行测试 · 实时对比推理与生成速度</Text>
-            </div>
-          </div>
-          <Segmented
-            className="mode-switch"
-            value={viewMode}
-            onChange={handleModeChange}
-            options={[
-              { label: '简洁模式', value: 'simple', icon: <EyeOutlined /> },
-              { label: '专业模式', value: 'advanced', icon: <DashboardOutlined /> },
-            ]}
-          />
-        </div>
-      </header>
-
-      {/* ===== Content ===== */}
-      <main className="app-main">
-        {/* Prompt Card */}
-        <Card className="prompt-card" bordered={false}>
-          <TextArea
-            value={testMessage}
-            onChange={e => setTestMessage(e.target.value)}
-            placeholder="请输入测试内容..."
-            allowClear
-            autoSize={{ minRows: 2, maxRows: 5 }}
-            className="prompt-textarea"
-          />
-          <div className="prompt-templates">
-            <Text type="secondary" className="templates-label">快捷提示</Text>
-            {PROMPT_TEMPLATES.map(t => (
-              <Tag key={t.label} className="template-tag" onClick={() => setTestMessage(t.value)}>{t.label}</Tag>
-            ))}
-          </div>
-          <div className="toolbar">
-            <div className="toolbar-left">
-              {viewMode === 'advanced' && (
-                <Space size={4}>
-                  <Select
-                    value={tokenCountMethod} onChange={setTokenCountMethod}
-                    style={{ width: 130 }} size="small"
-                    options={[
-                      { value: 'char', label: '字符长度统计' },
-                      { value: 'chunk', label: '响应块统计' },
-                    ]}
-                  />
-                  <Tooltip title="字符长度：按返回文本字符数统计；响应块：每个流式块计为1">
-                    <QuestionCircleOutlined style={{ color: '#aaa', fontSize: 13 }} />
-                  </Tooltip>
-                </Space>
-              )}
-            </div>
-            <Space className="toolbar-right" size={8}>
-              {viewMode === 'simple' && (
-                <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>
-                  模型配置 ({models.length})
-                </Button>
-              )}
-              {viewMode === 'advanced' && (
-                <>
-                  <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}>
-                    <Button icon={<RocketOutlined />}>快速添加</Button>
-                  </Dropdown>
-                  <Button icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
-                </>
-              )}
-              <Button icon={<SaveOutlined />} onClick={saveConfigurations}>保存</Button>
-              <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleTest} loading={isLoading}>
-                {isLoading ? '测试中' : '开始测试'}
-              </Button>
-            </Space>
-          </div>
-        </Card>
-
-        {/* ===== Simple Mode ===== */}
-        {viewMode === 'simple' && (
-          <>
-            <Drawer
-              title="模型配置"
-              open={configOpen}
-              onClose={() => setConfigOpen(false)}
-              width={420}
-              extra={
-                <Space size={6}>
-                  <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}>
-                    <Button size="small" icon={<RocketOutlined />}>快速添加</Button>
-                  </Dropdown>
-                  <Button size="small" icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
-                </Space>
-              }
-            >
-              <div className="drawer-model-list">
-                {models.map(m => renderModelConfig(m))}
-                {models.length === 0 && <Empty description="暂无模型，请添加" />}
+    <ConfigProvider locale={zhCN} theme={antThemeConfig}>
+      <div className="app-wrapper">
+        {/* ===== Header ===== */}
+        <header className="app-header">
+          <div className="header-inner">
+            <div className="header-left">
+              <RocketOutlined className="header-icon" />
+              <div className="header-text">
+                <Title level={4} className="header-title">大模型 API 性能评测</Title>
+                <Text className="header-sub">多服务商并行测试 · 实时对比推理与生成速度</Text>
               </div>
-            </Drawer>
+            </div>
+            <div className="header-right">
+              <Segmented
+                className="mode-switch"
+                value={viewMode}
+                onChange={handleModeChange}
+                options={[
+                  { label: '简洁模式', value: 'simple', icon: <EyeOutlined /> },
+                  { label: '专业模式', value: 'advanced', icon: <DashboardOutlined /> },
+                ]}
+              />
+              <Tooltip title={themeLabel}>
+                <Button type="text" className="theme-btn" onClick={cycleTheme}>
+                  {themeIcon}
+                </Button>
+              </Tooltip>
+            </div>
+          </div>
+        </header>
 
-            <div className="simple-grid">
-              {models.filter(m => m.enabled).length === 0 ? (
-                <Card className="empty-card" bordered={false}>
-                  <Empty description="暂无启用的模型">
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setConfigOpen(true)}>添加模型</Button>
-                  </Empty>
-                </Card>
-              ) : (
-                models.filter(m => m.enabled).map(model => {
+        {/* ===== Content ===== */}
+        <main className="app-main">
+          <Card className="prompt-card" bordered={false}>
+            <TextArea
+              value={testMessage} onChange={e => setTestMessage(e.target.value)}
+              placeholder="请输入测试内容..." allowClear autoSize={{ minRows: 2, maxRows: 5 }}
+              className="prompt-textarea"
+            />
+            <div className="prompt-templates">
+              <Text type="secondary" className="templates-label">快捷提示</Text>
+              {PROMPT_TEMPLATES.map(t => (
+                <Tag key={t.label} className="template-tag" onClick={() => setTestMessage(t.value)}>{t.label}</Tag>
+              ))}
+            </div>
+            <div className="toolbar">
+              <div className="toolbar-left">
+                {viewMode === 'advanced' && (
+                  <Space size={4}>
+                    <Select value={tokenCountMethod} onChange={setTokenCountMethod} style={{ width: 130 }} size="small"
+                      options={[{ value: 'char', label: '字符长度统计' }, { value: 'chunk', label: '响应块统计' }]} />
+                    <Tooltip title="字符长度：按返回文本字符数统计；响应块：每个流式块计为1">
+                      <QuestionCircleOutlined style={{ color: 'var(--text-3)', fontSize: 13 }} />
+                    </Tooltip>
+                  </Space>
+                )}
+              </div>
+              <Space className="toolbar-right" size={8}>
+                {viewMode === 'simple' && (
+                  <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>模型配置 ({models.length})</Button>
+                )}
+                {viewMode === 'advanced' && (
+                  <>
+                    <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}>
+                      <Button icon={<RocketOutlined />}>快速添加</Button>
+                    </Dropdown>
+                    <Button icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
+                  </>
+                )}
+                <Button icon={<SaveOutlined />} onClick={saveConfigurations}>保存</Button>
+                <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleTest} loading={isLoading}>
+                  {isLoading ? '测试中' : '开始测试'}
+                </Button>
+              </Space>
+            </div>
+          </Card>
+
+          {/* ===== Simple Mode ===== */}
+          {viewMode === 'simple' && (
+            <>
+              <Drawer title="模型配置" open={configOpen} onClose={() => setConfigOpen(false)} width={420}
+                extra={<Space size={6}>
+                  <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}><Button size="small" icon={<RocketOutlined />}>快速添加</Button></Dropdown>
+                  <Button size="small" icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
+                </Space>}>
+                <div className="drawer-model-list">
+                  {models.map(m => renderModelConfig(m))}
+                  {models.length === 0 && <Empty description="暂无模型，请添加" />}
+                </div>
+              </Drawer>
+              <div className="simple-grid">
+                {models.filter(m => m.enabled).length === 0 ? (
+                  <Card className="empty-card" bordered={false}>
+                    <Empty description="暂无启用的模型"><Button type="primary" icon={<PlusOutlined />} onClick={() => setConfigOpen(true)}>添加模型</Button></Empty>
+                  </Card>
+                ) : models.filter(m => m.enabled).map(model => {
                   const status = getStatus(model.id)
                   const resp = responses[model.id]
                   const result = results.find(r => r.modelId === model.id)
@@ -356,128 +393,67 @@ function App() {
                         </div>
                       </div>
                       <div className="simple-card-body">
-                        {resp?.content || resp?.reasoning ? (
-                          <>
-                            {resp.reasoning && (
-                              <Collapse
-                                ghost size="small"
-                                items={[{
-                                  key: 'r',
-                                  label: <Text type="secondary" style={{ fontSize: 12 }}>💭 思考过程</Text>,
-                                  children: <div className="reasoning-text">{resp.reasoning}</div>,
-                                }]}
-                              />
-                            )}
-                            <div className="content-text">{resp.content || ''}</div>
-                          </>
-                        ) : status === 'idle' ? (
-                          <div className="idle-placeholder">
-                            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="等待测试" />
-                          </div>
-                        ) : (
-                          <div className="loading-placeholder">
-                            <div className="typing-dots"><span /><span /><span /></div>
-                          </div>
-                        )}
+                        {resp?.content || resp?.reasoning ? (<>
+                          {resp.reasoning && (<Collapse ghost size="small" items={[{ key: 'r', label: <Text type="secondary" style={{ fontSize: 12 }}>💭 思考过程</Text>, children: <div className="reasoning-text">{resp.reasoning}</div> }]} />)}
+                          <div className="content-text">{resp.content || ''}</div>
+                        </>) : status === 'idle' ? (
+                          <div className="idle-placeholder"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="等待测试" /></div>
+                        ) : (<div className="loading-placeholder"><div className="typing-dots"><span /><span /><span /></div></div>)}
                       </div>
                     </Card>
                   )
-                })
-              )}
-            </div>
-          </>
-        )}
+                })}
+              </div>
+            </>
+          )}
 
-        {/* ===== Advanced Mode ===== */}
-        {viewMode === 'advanced' && (
-          <>
-            <div className="advanced-grid">
-              {models.map(model => {
-                const status = getStatus(model.id)
-                const resp = responses[model.id]
-                const result = results.find(r => r.modelId === model.id)
-                return (
-                  <Card
-                    key={model.id}
-                    className={`advanced-card ${!model.enabled ? 'disabled' : ''}`}
-                    bordered={false}
-                    style={{ '--accent': getProviderColor(model.baseUrl) }}
-                  >
-                    <div className="adv-header">
-                      <div className="adv-title">
-                        <Switch size="small" checked={model.enabled} onChange={c => toggleModel(model.id, c)} />
-                        <Input
-                          value={model.name} onChange={e => updateModel(model.id, 'name', e.target.value)}
-                          variant="borderless" className="adv-name-input" placeholder="名称"
-                        />
-                        {model.enabled ? <Tag color="green" bordered={false}>ON</Tag> : <Tag bordered={false}>OFF</Tag>}
-                        {statusTag(status)}
-                      </div>
-                      <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeModel(model.id)} />
-                    </div>
-
-                    <div className="adv-fields">
-                      <Input.Password size="small" placeholder="API Key" value={model.apiKey} onChange={e => updateModel(model.id, 'apiKey', e.target.value)} />
-                      <Input size="small" placeholder="Base URL" value={model.baseUrl} onChange={e => updateModel(model.id, 'baseUrl', e.target.value)} />
-                      <Input size="small" placeholder="Model ID" value={model.model} onChange={e => updateModel(model.id, 'model', e.target.value)} />
-                    </div>
-
-                    <div className="adv-responses">
-                      <div className="resp-block">
-                        <div className="resp-label">推理过程</div>
-                        <div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>
-                          {resp?.reasoning || ''}
+          {/* ===== Advanced Mode ===== */}
+          {viewMode === 'advanced' && (
+            <>
+              <div className="advanced-grid">
+                {models.map(model => {
+                  const status = getStatus(model.id)
+                  const resp = responses[model.id]
+                  const result = results.find(r => r.modelId === model.id)
+                  return (
+                    <Card key={model.id} className={`advanced-card ${!model.enabled ? 'disabled' : ''}`} bordered={false} style={{ '--accent': getProviderColor(model.baseUrl) }}>
+                      <div className="adv-header">
+                        <div className="adv-title">
+                          <Switch size="small" checked={model.enabled} onChange={c => toggleModel(model.id, c)} />
+                          <Input value={model.name} onChange={e => updateModel(model.id, 'name', e.target.value)} variant="borderless" className="adv-name-input" placeholder="名称" />
+                          {model.enabled ? <Tag color="green" bordered={false}>ON</Tag> : <Tag bordered={false}>OFF</Tag>}
+                          {statusTag(status)}
                         </div>
+                        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeModel(model.id)} />
                       </div>
-                      <div className="resp-block">
-                        <div className="resp-label">生成内容</div>
-                        <div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>
-                          {resp?.content || ''}
-                        </div>
+                      <div className="adv-fields">
+                        <Input.Password size="small" placeholder="API Key" value={model.apiKey} onChange={e => updateModel(model.id, 'apiKey', e.target.value)} />
+                        <Input size="small" placeholder="Base URL" value={model.baseUrl} onChange={e => updateModel(model.id, 'baseUrl', e.target.value)} />
+                        <Input size="small" placeholder="Model ID" value={model.model} onChange={e => updateModel(model.id, 'model', e.target.value)} />
                       </div>
-                    </div>
-
-                    <div className="adv-stats">
-                      {[
-                        { label: '首Token', value: result?.first_token_time || 'N/A', unit: 's' },
-                        { label: '推理速度', value: result?.reasoning_speed || '0', unit: 't/s' },
-                        { label: '内容速度', value: result?.content_speed || '0', unit: 't/s' },
-                        { label: '总速度', value: result?.total_speed || '0', unit: 't/s' },
-                        { label: '总时间', value: result?.total_time || '0', unit: 's' },
-                      ].map(s => (
-                        <div key={s.label} className={`stat-cell ${s.value === 'Error' ? 'error' : ''}`}>
-                          <div className="stat-val">{s.value}<span className="stat-unit">{s.unit}</span></div>
-                          <div className="stat-lbl">{s.label}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                )
-              })}
-              {models.length === 0 && (
-                <Card className="empty-card" bordered={false}>
-                  <Empty description="暂无模型">
-                    <Space>
-                      <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}>
-                        <Button icon={<RocketOutlined />}>快速添加</Button>
-                      </Dropdown>
-                      <Button icon={<PlusOutlined />} onClick={addModel}>自定义添加</Button>
-                    </Space>
-                  </Empty>
-                </Card>
-              )}
-            </div>
-
-            {results.length > 0 && (
-              <Card className="table-card" bordered={false}>
-                <Title level={5} style={{ marginBottom: 12 }}>📊 性能对比</Title>
-                <Table columns={columns} dataSource={results} rowKey="modelId" pagination={false} size="small" />
-              </Card>
-            )}
-          </>
-        )}
-      </main>
-    </div>
+                      <div className="adv-responses">
+                        <div className="resp-block"><div className="resp-label">推理过程</div><div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>{resp?.reasoning || ''}</div></div>
+                        <div className="resp-block"><div className="resp-label">生成内容</div><div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>{resp?.content || ''}</div></div>
+                      </div>
+                      <div className="adv-stats">
+                        {[{ label: '首Token', value: result?.first_token_time || 'N/A', unit: 's' }, { label: '推理速度', value: result?.reasoning_speed || '0', unit: 't/s' }, { label: '内容速度', value: result?.content_speed || '0', unit: 't/s' }, { label: '总速度', value: result?.total_speed || '0', unit: 't/s' }, { label: '总时间', value: result?.total_time || '0', unit: 's' }].map(s => (
+                          <div key={s.label} className={`stat-cell ${s.value === 'Error' ? 'error' : ''}`}>
+                            <div className="stat-val">{s.value}<span className="stat-unit">{s.unit}</span></div>
+                            <div className="stat-lbl">{s.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )
+                })}
+                {models.length === 0 && (<Card className="empty-card" bordered={false}><Empty description="暂无模型"><Space><Dropdown menu={{ items: presetMenuItems }} trigger={['click']}><Button icon={<RocketOutlined />}>快速添加</Button></Dropdown><Button icon={<PlusOutlined />} onClick={addModel}>自定义添加</Button></Space></Empty></Card>)}
+              </div>
+              {results.length > 0 && (<Card className="table-card" bordered={false}><Title level={5} style={{ marginBottom: 12 }}>📊 性能对比</Title><Table columns={columns} dataSource={results} rowKey="modelId" pagination={false} size="small" /></Card>)}
+            </>
+          )}
+        </main>
+      </div>
+    </ConfigProvider>
   )
 }
 

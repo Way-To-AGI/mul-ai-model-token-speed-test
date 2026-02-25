@@ -5,13 +5,10 @@
     'Noto Sans SC', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color: #fafafa;
-  background-color: #09090b;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color-scheme: dark;
 }
 
 * {
@@ -21,5 +18,7 @@
 body {
   margin: 0;
   padding: 0;
-  background: #09090b;
+  background: var(--bg, #09090b);
+  color: var(--text, #fafafa);
+  transition: background-color 0.3s, color 0.3s;
 }
