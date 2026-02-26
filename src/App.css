@@ -646,6 +646,180 @@
   background: var(--scrollbar-hover);
 }
 
+/* ===== Advanced Settings Panel ===== */
+.settings-collapse {
+  margin-bottom: 14px;
+}
+
+.settings-collapse .ant-collapse-header {
+  padding: 6px 0 !important;
+}
+
+.advanced-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.system-prompt-input {
+  font-size: 13px !important;
+}
+
+.params-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.param-label {
+  font-size: 12px !important;
+  color: var(--text-3) !important;
+  font-weight: 600;
+}
+
+.param-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-slider-row .ant-slider {
+  margin: 4px 0;
+}
+
+/* ===== Save Indicator ===== */
+.save-indicator {
+  font-size: 12px !important;
+  color: var(--accent) !important;
+  animation: fadeInOut 2s ease;
+}
+
+@keyframes fadeInOut {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ===== Best Card Highlight ===== */
+.simple-card.best {
+  border-color: var(--accent) !important;
+  box-shadow: var(--accent-glow), var(--shadow-card);
+}
+
+.best-badge {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.stat-best {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ===== Results Chart (CSS bars) ===== */
+.results-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.chart-row {
+  display: grid;
+  grid-template-columns: 32px 120px 1fr 110px;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+}
+
+.chart-rank {
+  font-size: 16px;
+  text-align: center;
+  line-height: 1;
+}
+
+.chart-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chart-name {
+  font-size: 13px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.chart-model {
+  font-size: 11px !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.chart-bar-track {
+  height: 22px;
+  background: var(--overlay-subtle);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.chart-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), rgba(16, 185, 129, 0.6));
+  border-radius: 4px;
+  transition: width 0.6s ease;
+  min-width: 4px;
+}
+
+.chart-metrics {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+  min-width: 0;
+}
+
+.chart-speed {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.chart-speed small {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+
+.chart-time {
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* ===== Table Header Row ===== */
+.table-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .app-main { padding: 16px 14px 32px; }
@@ -655,6 +829,8 @@
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar-right { justify-content: flex-end; }
   .adv-stats { grid-template-columns: repeat(3, 1fr); }
+  .params-row { grid-template-columns: 1fr; }
+  .chart-row { grid-template-columns: 28px 80px 1fr 90px; }
 }
 
 @media (max-width: 480px) {

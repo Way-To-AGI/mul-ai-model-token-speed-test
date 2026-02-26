@@ -1,22 +1,25 @@
-// input: presets.js (provider/prompt data), openai SDK, antd components
-// output: main App component — AI model speed test dashboard with auto light/dark theme
+// input: presets.js, openai SDK, antd, useTheme hook, ResultsChart
+// output: main App — AI model speed test dashboard
 // pos: root UI component rendered by main.jsx
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Button, Typography, Card, Input, Switch, Table, Select,
   Tooltip, message, Tag, Segmented, Dropdown, Collapse, Empty,
-  Space, Drawer, ConfigProvider, theme as antTheme,
+  Space, Drawer, ConfigProvider, theme as antTheme, Slider, InputNumber,
 } from 'antd'
 import {
   PlusOutlined, DeleteOutlined, QuestionCircleOutlined,
-  ThunderboltOutlined, SaveOutlined, SettingOutlined,
+  ThunderboltOutlined, SettingOutlined,
   EyeOutlined, DashboardOutlined, RocketOutlined,
+  StopOutlined, ExportOutlined, WarningOutlined,
 } from '@ant-design/icons'
 import zhCN from 'antd/locale/zh_CN'
 import './App.css'
 import { OpenAI } from 'openai'
 import { PROVIDER_PRESETS, PROMPT_TEMPLATES } from './presets'
+import { useTheme } from './hooks/useTheme'
+import { ResultsChart } from './components/ResultsChart'
 
 const { TextArea } = Input
 const { Title, Text } = Typography
@@ -24,7 +27,6 @@ const { Title, Text } = Typography
 const STORAGE_KEY = 'ai-speed-test-models'
 const LEGACY_KEY = 'deepseek-models'
 const MODE_KEY = 'ai-speed-test-view-mode'
-const THEME_KEY = 'ai-speed-test-theme'
 
 function getProviderColor(baseUrl) {
   if (!baseUrl) return '#10b981'
@@ -39,34 +41,8 @@ function getProviderColor(baseUrl) {
   }
 }
 
-function useTheme() {
-  const [themeMode, setThemeMode] = useState(() => localStorage.getItem(THEME_KEY) || 'auto')
-  const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
-
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (e) => setSystemDark(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
-
-  const isDark = themeMode === 'auto' ? systemDark : themeMode === 'dark'
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light')
-  }, [isDark])
-
-  const cycleTheme = () => {
-    const next = themeMode === 'auto' ? 'light' : themeMode === 'light' ? 'dark' : 'auto'
-    setThemeMode(next)
-    localStorage.setItem(THEME_KEY, next)
-  }
-
-  return { themeMode, isDark, cycleTheme }
-}
-
 function App() {
-  const { themeMode, isDark, cycleTheme } = useTheme()
+  const { isDark, cycleTheme, themeLabel, themeIcon } = useTheme()
 
   const [models, setModels] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY)
@@ -77,12 +53,31 @@ function App() {
   })
 
   const [testMessage, setTestMessage] = useState('你好！很高兴见到你，有什么我可以帮助你的吗？')
+  const [systemPrompt, setSystemPrompt] = useState('')
+  const [temperature, setTemperature] = useState(1)
+  const [maxTokens, setMaxTokens] = useState(null)
+  const [timeoutSecs, setTimeoutSecs] = useState(60)
   const [results, setResults] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [responses, setResponses] = useState({})
   const [tokenCountMethod, setTokenCountMethod] = useState('char')
   const [viewMode, setViewMode] = useState(() => localStorage.getItem(MODE_KEY) || 'simple')
   const [configOpen, setConfigOpen] = useState(false)
+  const [saveStatus, setSaveStatus] = useState('idle')
+
+  const abortRef = useRef(null)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const json = JSON.stringify(models)
+      localStorage.setItem(STORAGE_KEY, json)
+      localStorage.setItem(LEGACY_KEY, json)
+      setSaveStatus('saved')
+      const fade = setTimeout(() => setSaveStatus('idle'), 2000)
+      return () => clearTimeout(fade)
+    }, 800)
+    return () => clearTimeout(timer)
+  }, [models])
 
   const nextId = () => Math.max(...models.map(m => m.id), 0) + 1
 
@@ -98,9 +93,7 @@ function App() {
 
   const addFromPreset = (provider, modelName) => {
     const id = nextId()
-    setModels(prev => [...prev, {
-      id, name: provider.label, apiKey: '', baseUrl: provider.baseUrl, model: modelName, enabled: true,
-    }])
+    setModels(prev => [...prev, { id, name: provider.label, apiKey: '', baseUrl: provider.baseUrl, model: modelName, enabled: true }])
     message.success(`已添加 ${provider.label} · ${modelName}`)
   }
 
@@ -108,29 +101,38 @@ function App() {
   const toggleModel = (id, enabled) => setModels(prev => prev.map(m => m.id === id ? { ...m, enabled } : m))
   const updateModel = (id, field, value) => setModels(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m))
 
-  const saveConfigurations = () => {
-    const json = JSON.stringify(models)
-    localStorage.setItem(STORAGE_KEY, json)
-    localStorage.setItem(LEGACY_KEY, json)
-    message.success('配置已保存')
-  }
-
   const handleTest = async () => {
     const enabled = models.filter(m => m.enabled)
     if (!enabled.length) return message.warning('请至少启用一个模型')
     if (!testMessage.trim()) return message.warning('请输入测试内容')
 
+    const emptyKeys = enabled.filter(m => !m.apiKey.trim())
+    if (emptyKeys.length) {
+      message.warning(`${emptyKeys.map(m => m.name).join('、')} 缺少 API Key`)
+    }
+
+    const mainController = new AbortController()
+    abortRef.current = mainController
+
     setIsLoading(true)
     setResults([])
     setResponses({})
 
+    const messages = []
+    if (systemPrompt.trim()) messages.push({ role: 'system', content: systemPrompt.trim() })
+    messages.push({ role: 'user', content: testMessage })
+
     try {
       await Promise.all(enabled.map(async (model) => {
+        const modelController = new AbortController()
+        mainController.signal.addEventListener('abort', () => modelController.abort())
+        const timerId = setTimeout(() => modelController.abort(), timeoutSecs * 1000)
+
         try {
           setResults(prev => [...prev, {
             provider: model.name, modelId: model.id, modelName: model.model,
             first_token_time: 'N/A', reasoning_speed: '0', content_speed: '0',
-            total_speed: '0', total_time: '0', status: 'loading',
+            total_speed: '0', total_time: '0', status: 'loading', actual_tokens: null,
           }])
 
           const client = new OpenAI({ apiKey: model.apiKey, baseURL: model.baseUrl, dangerouslyAllowBrowser: true })
@@ -140,12 +142,18 @@ function App() {
           let reasoningStartTime = null, reasoningEndTime = null
           let contentStartTime = null, contentEndTime = null
           let reasoningContent = '', normalContent = ''
+          let usageData = null
 
-          const stream = await client.chat.completions.create({
-            model: model.model, messages: [{ role: 'user', content: testMessage }], stream: true,
-          })
+          const createParams = {
+            model: model.model, messages, stream: true, temperature,
+            stream_options: { include_usage: true },
+          }
+          if (maxTokens) createParams.max_tokens = maxTokens
+
+          const stream = await client.chat.completions.create(createParams, { signal: modelController.signal })
 
           for await (const chunk of stream) {
+            if (chunk.usage) usageData = chunk.usage
             if (!chunk.choices?.[0]?.delta) continue
             const delta = chunk.choices[0].delta
 
@@ -183,21 +191,70 @@ function App() {
             setResponses(prev => ({ ...prev, [model.id]: { reasoning: reasoningContent, content: normalContent } }))
           }
 
-          setResults(prev => prev.map(r => r.modelId === model.id ? { ...r, status: 'done' } : r))
+          const finalTime = (Date.now() - startTime) / 1000
+          const rTimeFinal = reasoningStartTime ? (reasoningEndTime - reasoningStartTime) / 1000 : 0
+          const cTimeFinal = contentStartTime ? (contentEndTime - contentStartTime) / 1000 : 0
+          const actualTokens = usageData?.completion_tokens || null
+          const totalTokensForSpeed = actualTokens || (reasoningTokenCount + contentTokenCount)
+
+          setResults(prev => prev.map(r => r.modelId === model.id ? {
+            ...r, status: 'done',
+            first_token_time: firstTokenTime?.toFixed(2) || 'N/A',
+            reasoning_speed: rTimeFinal > 0 ? (reasoningTokenCount / rTimeFinal).toFixed(2) : '0',
+            content_speed: cTimeFinal > 0 ? (contentTokenCount / cTimeFinal).toFixed(2) : '0',
+            total_speed: finalTime > 0 ? (totalTokensForSpeed / finalTime).toFixed(2) : '0',
+            total_time: finalTime.toFixed(2),
+            actual_tokens: actualTokens,
+          } : r))
         } catch (error) {
+          const isCancelled = modelController.signal.aborted
+          const isMainCancel = mainController.signal.aborted
+          let status = 'error', msg = error.message || '请求失败'
+          if (isCancelled) {
+            status = isMainCancel ? 'cancelled' : 'timeout'
+            msg = isMainCancel ? '已取消' : `超时 (${timeoutSecs}s)`
+          }
           console.error(`Error testing ${model.name}:`, error)
           setResults(prev => prev.map(r => r.modelId === model.id ? {
-            ...r, status: 'error',
-            first_token_time: 'Error', reasoning_speed: 'Error',
-            content_speed: 'Error', total_speed: 'Error', total_time: 'Error',
+            ...r, status,
+            first_token_time: status === 'error' ? 'Error' : '-',
+            reasoning_speed: status === 'error' ? 'Error' : '-',
+            content_speed: status === 'error' ? 'Error' : '-',
+            total_speed: status === 'error' ? 'Error' : '-',
+            total_time: status === 'error' ? 'Error' : '-',
           } : r))
-          setResponses(prev => ({ ...prev, [model.id]: { reasoning: '', content: error.message || '请求失败' } }))
+          setResponses(prev => ({ ...prev, [model.id]: { reasoning: '', content: msg } }))
+        } finally {
+          clearTimeout(timerId)
         }
       }))
     } finally {
       setIsLoading(false)
+      abortRef.current = null
     }
   }
+
+  const handleCancel = () => {
+    abortRef.current?.abort()
+    message.info('已取消所有测试')
+  }
+
+  const handleExport = useCallback(() => {
+    if (!results.length) return
+    const header = '服务商,模型,首Token(s),推理t/s,内容t/s,总t/s,总时间(s),实际tokens,状态'
+    const rows = results.map(r =>
+      [r.provider, r.modelName, r.first_token_time, r.reasoning_speed, r.content_speed, r.total_speed, r.total_time, r.actual_tokens || '', r.status].join(',')
+    )
+    const csv = [header, ...rows].join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `ai-speed-test-${new Date().toISOString().slice(0, 16)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success('已导出 CSV')
+  }, [results])
 
   const getStatus = (modelId) => {
     if (!isLoading && results.length === 0) return 'idle'
@@ -209,20 +266,31 @@ function App() {
   const presetMenuItems = PROVIDER_PRESETS.map(p => ({
     key: p.key,
     label: <span><span style={{ marginRight: 6 }}>{p.icon}</span>{p.label}</span>,
-    children: p.models.map(m => ({
-      key: `${p.key}::${m}`,
-      label: m,
-      onClick: () => addFromPreset(p, m),
-    })),
+    children: p.models.map(m => ({ key: `${p.key}::${m}`, label: m, onClick: () => addFromPreset(p, m) })),
   }))
+
+  const bestSpeed = results.filter(r => r.status === 'done').reduce((best, r) => {
+    const s = parseFloat(r.total_speed) || 0
+    return s > best ? s : best
+  }, 0)
 
   const columns = [
     { title: '服务商', dataIndex: 'provider', key: 'provider', render: (t, r) => <Text strong>{t}<Text type="secondary" style={{ fontSize: 12, marginLeft: 6 }}>{r.modelName}</Text></Text> },
     { title: '首Token(s)', dataIndex: 'first_token_time', key: 'ftt', render: v => <span className={v === 'Error' ? 'stat-error' : ''}>{v}</span> },
     { title: '推理 t/s', dataIndex: 'reasoning_speed', key: 'rs', render: v => <span className={v === 'Error' ? 'stat-error' : ''}>{v}</span> },
     { title: '内容 t/s', dataIndex: 'content_speed', key: 'cs', render: v => <span className={v === 'Error' ? 'stat-error' : ''}>{v}</span> },
-    { title: '总 t/s', dataIndex: 'total_speed', key: 'ts', render: v => <span className={v === 'Error' ? 'stat-error' : ''}>{v}</span> },
+    {
+      title: '总 t/s', dataIndex: 'total_speed', key: 'ts',
+      render: (v, r) => {
+        const isBest = r.status === 'done' && parseFloat(v) === bestSpeed && bestSpeed > 0
+        return <span className={v === 'Error' ? 'stat-error' : isBest ? 'stat-best' : ''}>{v}{isBest ? ' 🏆' : ''}</span>
+      },
+    },
     { title: '总时间(s)', dataIndex: 'total_time', key: 'tt', render: v => <span className={v === 'Error' ? 'stat-error' : ''}>{v}</span> },
+    {
+      title: 'Tokens', dataIndex: 'actual_tokens', key: 'at',
+      render: v => v ? <Tag bordered={false} color="green">{v}</Tag> : <Text type="secondary">-</Text>,
+    },
   ]
 
   const statusTag = (status) => {
@@ -231,9 +299,13 @@ function App() {
       case 'streaming': return <Tag color="processing"><span className="pulse-dot" />接收中</Tag>
       case 'done': return <Tag color="success">完成</Tag>
       case 'error': return <Tag color="error">错误</Tag>
+      case 'cancelled': return <Tag color="warning">已取消</Tag>
+      case 'timeout': return <Tag color="warning">超时</Tag>
       default: return null
     }
   }
+
+  const keyWarning = (model) => !model.apiKey.trim() && <Tooltip title="未填写 API Key"><WarningOutlined style={{ color: '#f59e0b', fontSize: 13 }} /></Tooltip>
 
   const renderModelConfig = (model) => (
     <div key={model.id} className="drawer-model-item" style={{ borderLeftColor: getProviderColor(model.baseUrl) }}>
@@ -241,18 +313,16 @@ function App() {
         <Switch size="small" checked={model.enabled} onChange={c => toggleModel(model.id, c)} />
         <Input size="small" variant="borderless" value={model.name} onChange={e => updateModel(model.id, 'name', e.target.value)} className="model-name-input" placeholder="名称" />
         {model.enabled ? <Tag color="green" bordered={false}>ON</Tag> : <Tag bordered={false}>OFF</Tag>}
+        {keyWarning(model)}
         <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeModel(model.id)} />
       </div>
       <div className="model-item-fields">
-        <Input.Password size="small" placeholder="API Key" value={model.apiKey} onChange={e => updateModel(model.id, 'apiKey', e.target.value)} />
+        <Input.Password size="small" placeholder="API Key" value={model.apiKey} onChange={e => updateModel(model.id, 'apiKey', e.target.value)} status={!model.apiKey.trim() ? 'warning' : undefined} />
         <Input size="small" placeholder="Base URL" value={model.baseUrl} onChange={e => updateModel(model.id, 'baseUrl', e.target.value)} />
         <Input size="small" placeholder="Model ID" value={model.model} onChange={e => updateModel(model.id, 'model', e.target.value)} />
       </div>
     </div>
   )
-
-  const themeLabel = themeMode === 'auto' ? '跟随系统' : themeMode === 'light' ? '浅色模式' : '深色模式'
-  const themeIcon = themeMode === 'auto' ? '🖥️' : isDark ? '🌙' : '☀️'
 
   const antThemeConfig = {
     algorithm: isDark ? antTheme.darkAlgorithm : antTheme.defaultAlgorithm,
@@ -260,29 +330,16 @@ function App() {
       borderRadius: 10,
       colorPrimary: isDark ? '#10b981' : '#059669',
       fontFamily: '"DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif',
-      ...(isDark ? {
-        colorBgBase: '#09090b',
-        colorBgContainer: '#18181b',
-        colorBgElevated: '#1f1f23',
-        colorBorder: 'rgba(255,255,255,0.08)',
-        colorBorderSecondary: 'rgba(255,255,255,0.06)',
-      } : {}),
+      ...(isDark ? { colorBgBase: '#09090b', colorBgContainer: '#18181b', colorBgElevated: '#1f1f23', colorBorder: 'rgba(255,255,255,0.08)', colorBorderSecondary: 'rgba(255,255,255,0.06)' } : {}),
     },
-    components: isDark ? {
-      Card: { colorBgContainer: '#18181b' },
-      Table: { colorBgContainer: 'transparent', headerBg: 'rgba(255,255,255,0.03)' },
-      Input: { colorBgContainer: '#111113' },
-      Select: { colorBgContainer: '#111113' },
-      Drawer: { colorBgElevated: '#18181b' },
-    } : {
-      Table: { headerBg: 'rgba(0,0,0,0.02)' },
-    },
+    components: isDark
+      ? { Card: { colorBgContainer: '#18181b' }, Table: { colorBgContainer: 'transparent', headerBg: 'rgba(255,255,255,0.03)' }, Input: { colorBgContainer: '#111113' }, Select: { colorBgContainer: '#111113' }, Drawer: { colorBgElevated: '#18181b' } }
+      : { Table: { headerBg: 'rgba(0,0,0,0.02)' } },
   }
 
   return (
     <ConfigProvider locale={zhCN} theme={antThemeConfig}>
       <div className="app-wrapper">
-        {/* ===== Header ===== */}
         <header className="app-header">
           <div className="header-inner">
             <div className="header-left">
@@ -293,164 +350,178 @@ function App() {
               </div>
             </div>
             <div className="header-right">
-              <Segmented
-                className="mode-switch"
-                value={viewMode}
-                onChange={handleModeChange}
-                options={[
-                  { label: '简洁模式', value: 'simple', icon: <EyeOutlined /> },
-                  { label: '专业模式', value: 'advanced', icon: <DashboardOutlined /> },
-                ]}
-              />
-              <Tooltip title={themeLabel}>
-                <Button type="text" className="theme-btn" onClick={cycleTheme}>
-                  {themeIcon}
-                </Button>
-              </Tooltip>
+              <Segmented className="mode-switch" value={viewMode} onChange={handleModeChange} options={[
+                { label: '简洁模式', value: 'simple', icon: <EyeOutlined /> },
+                { label: '专业模式', value: 'advanced', icon: <DashboardOutlined /> },
+              ]} />
+              <Tooltip title={themeLabel}><Button type="text" className="theme-btn" onClick={cycleTheme}>{themeIcon}</Button></Tooltip>
             </div>
           </div>
         </header>
 
-        {/* ===== Content ===== */}
         <main className="app-main">
+          {/* ===== Prompt Card ===== */}
           <Card className="prompt-card" bordered={false}>
-            <TextArea
-              value={testMessage} onChange={e => setTestMessage(e.target.value)}
-              placeholder="请输入测试内容..." allowClear autoSize={{ minRows: 2, maxRows: 5 }}
-              className="prompt-textarea"
-            />
+            <TextArea value={testMessage} onChange={e => setTestMessage(e.target.value)} placeholder="请输入测试内容..." allowClear autoSize={{ minRows: 2, maxRows: 5 }} className="prompt-textarea" />
             <div className="prompt-templates">
               <Text type="secondary" className="templates-label">快捷提示</Text>
-              {PROMPT_TEMPLATES.map(t => (
-                <Tag key={t.label} className="template-tag" onClick={() => setTestMessage(t.value)}>{t.label}</Tag>
-              ))}
+              {PROMPT_TEMPLATES.map(t => <Tag key={t.label} className="template-tag" onClick={() => setTestMessage(t.value)}>{t.label}</Tag>)}
             </div>
+
+            {/* Advanced Settings */}
+            <Collapse ghost size="small" className="settings-collapse" items={[{
+              key: 'settings',
+              label: <Text type="secondary" style={{ fontSize: 13 }}>⚙️ 高级设置</Text>,
+              children: (
+                <div className="advanced-settings">
+                  <TextArea value={systemPrompt} onChange={e => setSystemPrompt(e.target.value)} placeholder="System Prompt（可选，如：你是一个专业的编程助手）" autoSize={{ minRows: 1, maxRows: 3 }} className="system-prompt-input" />
+                  <div className="params-row">
+                    <div className="param-item">
+                      <Text className="param-label">Temperature</Text>
+                      <div className="param-slider-row">
+                        <Slider min={0} max={2} step={0.1} value={temperature} onChange={setTemperature} style={{ flex: 1 }} />
+                        <InputNumber size="small" min={0} max={2} step={0.1} value={temperature} onChange={v => v !== null && setTemperature(v)} style={{ width: 62 }} />
+                      </div>
+                    </div>
+                    <div className="param-item">
+                      <Text className="param-label">Max Tokens</Text>
+                      <InputNumber size="small" min={1} max={128000} value={maxTokens} onChange={setMaxTokens} placeholder="默认" style={{ width: '100%' }} />
+                    </div>
+                    <div className="param-item">
+                      <Text className="param-label">超时(秒)</Text>
+                      <InputNumber size="small" min={5} max={600} value={timeoutSecs} onChange={v => v && setTimeoutSecs(v)} style={{ width: '100%' }} />
+                    </div>
+                  </div>
+                </div>
+              ),
+            }]} />
+
+            {/* Toolbar */}
             <div className="toolbar">
               <div className="toolbar-left">
                 {viewMode === 'advanced' && (
                   <Space size={4}>
                     <Select value={tokenCountMethod} onChange={setTokenCountMethod} style={{ width: 130 }} size="small"
                       options={[{ value: 'char', label: '字符长度统计' }, { value: 'chunk', label: '响应块统计' }]} />
-                    <Tooltip title="字符长度：按返回文本字符数统计；响应块：每个流式块计为1">
+                    <Tooltip title="字符长度：按返回文本字符数统计；响应块：每个流式块计为1。如 API 返回 usage 字段则自动使用准确值。">
                       <QuestionCircleOutlined style={{ color: 'var(--text-3)', fontSize: 13 }} />
                     </Tooltip>
                   </Space>
                 )}
+                {saveStatus === 'saved' && <Text type="secondary" className="save-indicator">✓ 已自动保存</Text>}
               </div>
               <Space className="toolbar-right" size={8}>
-                {viewMode === 'simple' && (
-                  <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>模型配置 ({models.length})</Button>
-                )}
-                {viewMode === 'advanced' && (
-                  <>
-                    <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}>
-                      <Button icon={<RocketOutlined />}>快速添加</Button>
-                    </Dropdown>
-                    <Button icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
-                  </>
-                )}
-                <Button icon={<SaveOutlined />} onClick={saveConfigurations}>保存</Button>
-                <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleTest} loading={isLoading}>
-                  {isLoading ? '测试中' : '开始测试'}
-                </Button>
+                {viewMode === 'simple' && <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>模型配置 ({models.length})</Button>}
+                {viewMode === 'advanced' && (<>
+                  <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}><Button icon={<RocketOutlined />}>快速添加</Button></Dropdown>
+                  <Button icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
+                </>)}
+                {isLoading
+                  ? <Button danger icon={<StopOutlined />} onClick={handleCancel}>取消测试</Button>
+                  : <Button type="primary" icon={<ThunderboltOutlined />} onClick={handleTest}>开始测试</Button>
+                }
               </Space>
             </div>
           </Card>
 
           {/* ===== Simple Mode ===== */}
-          {viewMode === 'simple' && (
-            <>
-              <Drawer title="模型配置" open={configOpen} onClose={() => setConfigOpen(false)} width={420}
-                extra={<Space size={6}>
-                  <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}><Button size="small" icon={<RocketOutlined />}>快速添加</Button></Dropdown>
-                  <Button size="small" icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
-                </Space>}>
-                <div className="drawer-model-list">
-                  {models.map(m => renderModelConfig(m))}
-                  {models.length === 0 && <Empty description="暂无模型，请添加" />}
-                </div>
-              </Drawer>
-              <div className="simple-grid">
-                {models.filter(m => m.enabled).length === 0 ? (
-                  <Card className="empty-card" bordered={false}>
-                    <Empty description="暂无启用的模型"><Button type="primary" icon={<PlusOutlined />} onClick={() => setConfigOpen(true)}>添加模型</Button></Empty>
+          {viewMode === 'simple' && (<>
+            <Drawer title="模型配置" open={configOpen} onClose={() => setConfigOpen(false)} width={420}
+              extra={<Space size={6}>
+                <Dropdown menu={{ items: presetMenuItems }} trigger={['click']}><Button size="small" icon={<RocketOutlined />}>快速添加</Button></Dropdown>
+                <Button size="small" icon={<PlusOutlined />} onClick={addModel}>自定义</Button>
+              </Space>}>
+              <div className="drawer-model-list">{models.map(m => renderModelConfig(m))}{models.length === 0 && <Empty description="暂无模型，请添加" />}</div>
+            </Drawer>
+            <div className="simple-grid">
+              {models.filter(m => m.enabled).length === 0 ? (
+                <Card className="empty-card" bordered={false}><Empty description="暂无启用的模型"><Button type="primary" icon={<PlusOutlined />} onClick={() => setConfigOpen(true)}>添加模型</Button></Empty></Card>
+              ) : models.filter(m => m.enabled).map(model => {
+                const status = getStatus(model.id)
+                const resp = responses[model.id]
+                const result = results.find(r => r.modelId === model.id)
+                const isBest = result && result.status === 'done' && parseFloat(result.total_speed) === bestSpeed && bestSpeed > 0
+                return (
+                  <Card key={model.id} className={`simple-card ${status} ${isBest ? 'best' : ''}`} bordered={false} style={{ '--accent': getProviderColor(model.baseUrl) }}>
+                    <div className="simple-card-head">
+                      <div className="simple-card-name">
+                        <span className="accent-dot" />
+                        <Text strong className="model-label">{model.name}</Text>
+                        <Text type="secondary" className="model-id-label">{model.model}</Text>
+                      </div>
+                      <div className="simple-card-status">
+                        {result && status === 'done' && <Text type="secondary" className="time-badge">{result.total_speed} t/s · {result.total_time}s</Text>}
+                        {isBest && <span className="best-badge">🏆</span>}
+                        {statusTag(status)}
+                      </div>
+                    </div>
+                    <div className="simple-card-body">
+                      {resp?.content || resp?.reasoning ? (<>
+                        {resp.reasoning && <Collapse ghost size="small" items={[{ key: 'r', label: <Text type="secondary" style={{ fontSize: 12 }}>💭 思考过程</Text>, children: <div className="reasoning-text">{resp.reasoning}</div> }]} />}
+                        <div className="content-text">{resp.content || ''}</div>
+                      </>) : status === 'idle' ? (
+                        <div className="idle-placeholder"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="等待测试" /></div>
+                      ) : (<div className="loading-placeholder"><div className="typing-dots"><span /><span /><span /></div></div>)}
+                    </div>
                   </Card>
-                ) : models.filter(m => m.enabled).map(model => {
-                  const status = getStatus(model.id)
-                  const resp = responses[model.id]
-                  const result = results.find(r => r.modelId === model.id)
-                  return (
-                    <Card key={model.id} className={`simple-card ${status}`} bordered={false} style={{ '--accent': getProviderColor(model.baseUrl) }}>
-                      <div className="simple-card-head">
-                        <div className="simple-card-name">
-                          <span className="accent-dot" />
-                          <Text strong className="model-label">{model.name}</Text>
-                          <Text type="secondary" className="model-id-label">{model.model}</Text>
-                        </div>
-                        <div className="simple-card-status">
-                          {result && status === 'done' && <Text type="secondary" className="time-badge">{result.total_time}s</Text>}
-                          {statusTag(status)}
-                        </div>
-                      </div>
-                      <div className="simple-card-body">
-                        {resp?.content || resp?.reasoning ? (<>
-                          {resp.reasoning && (<Collapse ghost size="small" items={[{ key: 'r', label: <Text type="secondary" style={{ fontSize: 12 }}>💭 思考过程</Text>, children: <div className="reasoning-text">{resp.reasoning}</div> }]} />)}
-                          <div className="content-text">{resp.content || ''}</div>
-                        </>) : status === 'idle' ? (
-                          <div className="idle-placeholder"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="等待测试" /></div>
-                        ) : (<div className="loading-placeholder"><div className="typing-dots"><span /><span /><span /></div></div>)}
-                      </div>
-                    </Card>
-                  )
-                })}
-              </div>
-            </>
-          )}
+                )
+              })}
+            </div>
+          </>)}
 
           {/* ===== Advanced Mode ===== */}
-          {viewMode === 'advanced' && (
-            <>
-              <div className="advanced-grid">
-                {models.map(model => {
-                  const status = getStatus(model.id)
-                  const resp = responses[model.id]
-                  const result = results.find(r => r.modelId === model.id)
-                  return (
-                    <Card key={model.id} className={`advanced-card ${!model.enabled ? 'disabled' : ''}`} bordered={false} style={{ '--accent': getProviderColor(model.baseUrl) }}>
-                      <div className="adv-header">
-                        <div className="adv-title">
-                          <Switch size="small" checked={model.enabled} onChange={c => toggleModel(model.id, c)} />
-                          <Input value={model.name} onChange={e => updateModel(model.id, 'name', e.target.value)} variant="borderless" className="adv-name-input" placeholder="名称" />
-                          {model.enabled ? <Tag color="green" bordered={false}>ON</Tag> : <Tag bordered={false}>OFF</Tag>}
-                          {statusTag(status)}
+          {viewMode === 'advanced' && (<>
+            <div className="advanced-grid">
+              {models.map(model => {
+                const status = getStatus(model.id)
+                const resp = responses[model.id]
+                const result = results.find(r => r.modelId === model.id)
+                return (
+                  <Card key={model.id} className={`advanced-card ${!model.enabled ? 'disabled' : ''}`} bordered={false} style={{ '--accent': getProviderColor(model.baseUrl) }}>
+                    <div className="adv-header">
+                      <div className="adv-title">
+                        <Switch size="small" checked={model.enabled} onChange={c => toggleModel(model.id, c)} />
+                        <Input value={model.name} onChange={e => updateModel(model.id, 'name', e.target.value)} variant="borderless" className="adv-name-input" placeholder="名称" />
+                        {model.enabled ? <Tag color="green" bordered={false}>ON</Tag> : <Tag bordered={false}>OFF</Tag>}
+                        {keyWarning(model)}
+                        {statusTag(status)}
+                      </div>
+                      <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeModel(model.id)} />
+                    </div>
+                    <div className="adv-fields">
+                      <Input.Password size="small" placeholder="API Key" value={model.apiKey} onChange={e => updateModel(model.id, 'apiKey', e.target.value)} status={!model.apiKey.trim() ? 'warning' : undefined} />
+                      <Input size="small" placeholder="Base URL" value={model.baseUrl} onChange={e => updateModel(model.id, 'baseUrl', e.target.value)} />
+                      <Input size="small" placeholder="Model ID" value={model.model} onChange={e => updateModel(model.id, 'model', e.target.value)} />
+                    </div>
+                    <div className="adv-responses">
+                      <div className="resp-block"><div className="resp-label">推理过程</div><div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>{resp?.reasoning || ''}</div></div>
+                      <div className="resp-block"><div className="resp-label">生成内容</div><div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>{resp?.content || ''}</div></div>
+                    </div>
+                    <div className="adv-stats">
+                      {[{ label: '首Token', value: result?.first_token_time || 'N/A', unit: 's' }, { label: '推理速度', value: result?.reasoning_speed || '0', unit: 't/s' }, { label: '内容速度', value: result?.content_speed || '0', unit: 't/s' }, { label: '总速度', value: result?.total_speed || '0', unit: 't/s' }, { label: '总时间', value: result?.total_time || '0', unit: 's' }].map(s => (
+                        <div key={s.label} className={`stat-cell ${s.value === 'Error' ? 'error' : ''}`}>
+                          <div className="stat-val">{s.value}<span className="stat-unit">{s.unit}</span></div>
+                          <div className="stat-lbl">{s.label}</div>
                         </div>
-                        <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={() => removeModel(model.id)} />
-                      </div>
-                      <div className="adv-fields">
-                        <Input.Password size="small" placeholder="API Key" value={model.apiKey} onChange={e => updateModel(model.id, 'apiKey', e.target.value)} />
-                        <Input size="small" placeholder="Base URL" value={model.baseUrl} onChange={e => updateModel(model.id, 'baseUrl', e.target.value)} />
-                        <Input size="small" placeholder="Model ID" value={model.model} onChange={e => updateModel(model.id, 'model', e.target.value)} />
-                      </div>
-                      <div className="adv-responses">
-                        <div className="resp-block"><div className="resp-label">推理过程</div><div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>{resp?.reasoning || ''}</div></div>
-                        <div className="resp-block"><div className="resp-label">生成内容</div><div className="resp-box" ref={el => { if (el) el.scrollTop = el.scrollHeight }}>{resp?.content || ''}</div></div>
-                      </div>
-                      <div className="adv-stats">
-                        {[{ label: '首Token', value: result?.first_token_time || 'N/A', unit: 's' }, { label: '推理速度', value: result?.reasoning_speed || '0', unit: 't/s' }, { label: '内容速度', value: result?.content_speed || '0', unit: 't/s' }, { label: '总速度', value: result?.total_speed || '0', unit: 't/s' }, { label: '总时间', value: result?.total_time || '0', unit: 's' }].map(s => (
-                          <div key={s.label} className={`stat-cell ${s.value === 'Error' ? 'error' : ''}`}>
-                            <div className="stat-val">{s.value}<span className="stat-unit">{s.unit}</span></div>
-                            <div className="stat-lbl">{s.label}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  )
-                })}
-                {models.length === 0 && (<Card className="empty-card" bordered={false}><Empty description="暂无模型"><Space><Dropdown menu={{ items: presetMenuItems }} trigger={['click']}><Button icon={<RocketOutlined />}>快速添加</Button></Dropdown><Button icon={<PlusOutlined />} onClick={addModel}>自定义添加</Button></Space></Empty></Card>)}
-              </div>
-              {results.length > 0 && (<Card className="table-card" bordered={false}><Title level={5} style={{ marginBottom: 12 }}>📊 性能对比</Title><Table columns={columns} dataSource={results} rowKey="modelId" pagination={false} size="small" /></Card>)}
-            </>
-          )}
+                      ))}
+                    </div>
+                  </Card>
+                )
+              })}
+              {models.length === 0 && <Card className="empty-card" bordered={false}><Empty description="暂无模型"><Space><Dropdown menu={{ items: presetMenuItems }} trigger={['click']}><Button icon={<RocketOutlined />}>快速添加</Button></Dropdown><Button icon={<PlusOutlined />} onClick={addModel}>自定义添加</Button></Space></Empty></Card>}
+            </div>
+
+            {results.length > 0 && (
+              <Card className="table-card" bordered={false}>
+                <div className="table-header-row">
+                  <Title level={5} style={{ margin: 0 }}>📊 性能对比</Title>
+                  <Button size="small" icon={<ExportOutlined />} onClick={handleExport}>导出 CSV</Button>
+                </div>
+                <ResultsChart results={results} />
+                <Table columns={columns} dataSource={results} rowKey="modelId" pagination={false} size="small" style={{ marginTop: 16 }} />
+              </Card>
+            )}
+          </>)}
         </main>
       </div>
     </ConfigProvider>
